@@ -29,8 +29,8 @@ def filter_last_files(source_dir, dest_dir):
 
 def sanity_check():
     # Check if each scan has a corresponding segmentation
-    scan_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/last scan niftis cropped"
-    seg_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/last segmentations cropped"
+    scan_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/last_scan"
+    seg_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/last_segmentations"
 
     scan_files = os.listdir(scan_dir)
     seg_files = os.listdir(seg_dir)
@@ -45,19 +45,18 @@ def sanity_check():
 
 
 #select last scan of each patient
-source_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/scan niftis cropped"
-dest_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/last scan niftis cropped"
+source_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/all_scans"
+dest_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/last_scans"
 
 filter_last_files(source_dir, dest_dir)
 
 #select last segmentation of each patient
-source_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/labels made by AI model cropped"
-dest_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/last segmentations cropped"
+source_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/all_segmentations"
+dest_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/last_segmentations"
 
 filter_last_files(source_dir, dest_dir)
 
 #perform a sanity check 
-#checks whether each scan has a corresponding segmentation
 sanity_check()
 
 #output of sanity check: (probably exlude)
