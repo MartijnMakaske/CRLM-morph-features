@@ -4,7 +4,7 @@
 
 #SBATCH --job-name=test-gpu                     # a convenient name for your job
 #SBATCH --gres=gpu:1g.10gb:1                    # number of GPU you want to use
-#SBATCH --mem=8G                                # max memory used
+#SBATCH --mem=50G                                # max memory used
 #SBATCH --partition=luna-short                  # using luna-long queue for long period > 8h or luna-short for short < 8h
 #SBATCH --cpus-per-task=1                       # max CPU cores per process
 #SBATCH --time=0-04:00                          # time limit (DD-HH:MM)
