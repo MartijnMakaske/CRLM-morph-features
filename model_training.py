@@ -1,28 +1,25 @@
 #imports
 import os
-
-import torch
-import torch.nn as nn
 import numpy as np
 import pandas as pd
+import glob
+import nibabel as nib
+import copy
+from tqdm import tqdm
 
+from monai.data import Dataset
 from monai.transforms import (
     Resize,
     ScaleIntensity,
     Compose
 )
 
-import glob
-import nibabel as nib
-from sklearn.model_selection import train_test_split
-from monai.data import Dataset
-
+import torch
+import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
-from tqdm import tqdm
+
 from sklearn.model_selection import StratifiedKFold
-import copy
-import numpy as np
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 
 #----------------------------------
@@ -86,7 +83,9 @@ class SiameseNetwork(nn.Module):
         output3 = self.classifier(combined_embeddings)
         return output3
 
-
+# ---------------------------------------
+# READ DATA
+# ---------------------------------------
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -165,9 +164,8 @@ def train_model(model, train_loader, criterion, optimizer, scheduler, num_epochs
         scheduler.step()
 
 
-# Number of folds
+# HYPERPARAMETERS
 n_splits = 5
-
 batch_size = 1
 num_epochs = 1
 
