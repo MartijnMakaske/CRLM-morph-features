@@ -240,8 +240,6 @@ def metrics_per_outcome(all_ground_truths, all_probs):
 
 
 
-
-
 # HYPERPARAMETERS
 n_splits = 5
 batch_size = 4
@@ -271,10 +269,10 @@ for fold, (train_idx, val_idx) in enumerate(mlskf.split(image_pairs, all_labels)
 
     # Create training and validation datasets
     train_dataset = PairedMedicalDataset(
-        train_image_pairs, train_metadata, train_labels, transform=[ScaleIntensity(), Resize((64, 256, 256))]
+        train_image_pairs, train_metadata, train_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
     )
     val_dataset = PairedMedicalDataset(
-        val_image_pairs, val_metadata, val_labels, transform=[ScaleIntensity(), Resize((64, 256, 256))]
+        val_image_pairs, val_metadata, val_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
     )
 
     # Create DataLoaders
