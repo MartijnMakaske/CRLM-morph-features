@@ -10,8 +10,37 @@ import torch
 import torch.nn as nn
 
 
+class PairedMedicalDataset_Images(Dataset):
+    def __init__(self, image_pairs, labels, transform=None):
+        self.image_pairs = image_pairs
+        self.labels = labels
+        self.transform = Compose(transform)
+    
+    def __len__(self):
+        return len(self.image_pairs)
+    
+    def __getitem__(self, idx):
+        img1_path, img2_path = self.image_pairs[idx]
+        
+        # Load images using nibabel (for NIfTI)
+        img1 = nib.load(img1_path).get_fdata()
+        img2 = nib.load(img2_path).get_fdata()
 
-class PairedMedicalDataset(Dataset):
+        # Add channel dimension for CNN input (C, H, W, D)
+        img1 = np.expand_dims(img1, axis=0)
+        img2 = np.expand_dims(img2, axis=0)
+        
+        label = self.labels[idx]
+
+        label = label.float()
+        
+        if self.transform:
+            img1 = self.transform(img1)
+            img2 = self.transform(img2)
+        
+        return img1, img2, label
+    
+class PairedMedicalDataset_Full(Dataset):
     def __init__(self, image_pairs, metadata, labels, transform=None):
         self.image_pairs = image_pairs
         self.metadata = metadata
@@ -43,9 +72,34 @@ class PairedMedicalDataset(Dataset):
         
         return img1, img2, metadata, label
     
-class SiameseNetwork(nn.Module):
+class SiameseNetwork_Images(nn.Module):
     def __init__(self, base_model):
-        super(SiameseNetwork, self).__init__()
+        super(SiameseNetwork_Images, self).__init__()
+        self.base_model = base_model
+        self.adaptive_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
+        self.classifier = nn.Sequential(
+            nn.Linear(512,256),     #use 2054 for resnet50
+            nn.ReLU(),
+            nn.Linear(256,9)    # No softmax, because BCEWithLogitsLoss applies sigmoid internally
+        )
+
+    
+    def forward(self, image1, image2):
+        # Pass both inputs through the shared model
+        output1 = self.base_model(image1)
+        output2 = self.base_model(image2)
+
+        # Apply adaptive average pooling to both outputs
+        output1 = self.adaptive_pool(output1).view(output1.size(0), -1)  # Flatten after pooling
+        output2 = self.adaptive_pool(output2).view(output2.size(0), -1)  # Flatten after pooling
+
+        combined_embeddings = torch.cat((output1, output2), dim=1)
+        output3 = self.classifier(combined_embeddings)
+        return output3
+
+class SiameseNetwork_Full(nn.Module):
+    def __init__(self, base_model):
+        super(SiameseNetwork_Full, self).__init__()
         self.base_model = base_model
         self.adaptive_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
         self.classifier = nn.Sequential(

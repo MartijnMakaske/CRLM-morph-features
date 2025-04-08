@@ -55,7 +55,7 @@ class PairedMedicalDataset(Dataset):
             img1 = self.transform(img1)
             img2 = self.transform(img2)
         
-        return img1, img2, label
+        return img1_path, img2_path, label
     
 class SiameseNetwork(nn.Module):
     def __init__(self, base_model):
@@ -63,7 +63,7 @@ class SiameseNetwork(nn.Module):
         self.base_model = base_model
         self.adaptive_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
         self.classifier = nn.Sequential(
-            nn.Linear(512,256),     #use 2054 for resnet50
+            nn.Linear(2054,256),     #use 2054 for resnet50
             nn.ReLU(),
             nn.Linear(256,9)    # No softmax, because BCEWithLogitsLoss applies sigmoid internally
         )
@@ -89,7 +89,7 @@ class SiameseNetwork(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-data_dir = "/scratch/bmep/mfmakaske/training_scans/"
+data_dir = "/scratch/bmep/mfmakaske/training_tumor_scans/"
 clinical_data_dir = "/scratch/bmep/mfmakaske/"
 nifti_images = sorted(glob.glob(os.path.join(data_dir, "*.nii.gz")))   
 
@@ -105,7 +105,7 @@ all_labels = torch.tensor(pd_labels.values.tolist()) #Fill in correct path. resp
 # INITIALIZE ENCODER
 #------------------------------------
 
-resnet_model = torch.hub.load('Warvito/MedicalNet-models', 'medicalnet_resnet10')
+resnet_model = torch.hub.load('Warvito/MedicalNet-models', 'medicalnet_resnet50')
 
 # Remove the final classification layer (fc) to keep only the encoder part
 encoder = nn.Sequential(*list(resnet_model.children())[:-1])
@@ -240,8 +240,8 @@ def metrics_per_outcome(all_ground_truths, all_probs):
 
 # HYPERPARAMETERS
 n_splits = 5
-batch_size = 4
-num_epochs = 50
+batch_size = 8
+num_epochs = 30
 class_weights = torch.tensor([ 5.7600,  8.0000, 10.2857,  1.2152,  2.4202,  9.0000,  1.1803,  2.9091,
                             12.0000], dtype=torch.float32).to(device)
 
@@ -270,6 +270,10 @@ for fold, (train_idx, val_idx) in enumerate(mlskf.split(image_pairs, all_labels)
     val_dataset = PairedMedicalDataset(
         val_image_pairs, val_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
     )
+
+    for i in range(len(train_dataset)):
+        print(f"Train pair {i}: {train_dataset[i]}")
+
 
     # Create DataLoaders
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)

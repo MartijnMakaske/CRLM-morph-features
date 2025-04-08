@@ -109,7 +109,7 @@ all_labels = torch.tensor(pd_labels.values.tolist()) #Fill in correct path. resp
 # INITIALIZE ENCODER
 #------------------------------------
 
-resnet_model = torch.hub.load('Warvito/MedicalNet-models', 'medicalnet_resnet10')
+resnet_model = torch.hub.load('Warvito/MedicalNet-models', 'medicalnet_resnet18')
 
 # Remove the final classification layer (fc) to keep only the encoder part
 encoder = nn.Sequential(*list(resnet_model.children())[:-1])
@@ -233,8 +233,6 @@ def metrics_per_outcome(all_ground_truths, all_probs):
         except ValueError:
             auc_roc = float('nan')  # Handle cases where AUC-ROC cannot be calculated
         print(f"{outcome} - AUC-ROC: {auc_roc}")
-
-
 
 
 
