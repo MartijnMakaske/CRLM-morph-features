@@ -78,8 +78,10 @@ class SiameseNetwork_Images(nn.Module):
         self.base_model = base_model
         self.adaptive_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
         self.classifier = nn.Sequential(
-            nn.Linear(512,256),     #use 2054 for resnet50
-            nn.ReLU(),
+            nn.Linear(1024,512),     #use 2054 for resnet50, 1024 (+1) for resnet18
+            nn.LeakyReLU(),
+            nn.Linear(512,256),
+            nn.LeakyReLU(),
             nn.Linear(256,9)    # No softmax, because BCEWithLogitsLoss applies sigmoid internally
         )
 
@@ -89,9 +91,9 @@ class SiameseNetwork_Images(nn.Module):
         output1 = self.base_model(image1)
         output2 = self.base_model(image2)
 
-        # Apply adaptive average pooling to both outputs
-        output1 = self.adaptive_pool(output1).view(output1.size(0), -1)  # Flatten after pooling
-        output2 = self.adaptive_pool(output2).view(output2.size(0), -1)  # Flatten after pooling
+        # Apply adaptive average pooling to both outputs (resnet from monai flattens itself)
+        #output1 = self.adaptive_pool(output1).view(output1.size(0), -1)  # Flatten after pooling
+        #output2 = self.adaptive_pool(output2).view(output2.size(0), -1)  # Flatten after pooling
 
         combined_embeddings = torch.cat((output1, output2), dim=1)
         output3 = self.classifier(combined_embeddings)
@@ -103,8 +105,10 @@ class SiameseNetwork_Full(nn.Module):
         self.base_model = base_model
         self.adaptive_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
         self.classifier = nn.Sequential(
+            nn.Linear(1024,512),     #use 2054 for resnet50, 1024 (+1) for resnet18
+            nn.LeakyReLU(),
             nn.Linear(518,256),     #use 2054 for resnet50
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(256,9)    # No softmax, because BCEWithLogitsLoss applies sigmoid internally
         )
 

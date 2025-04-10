@@ -21,10 +21,29 @@ from torch.optim.lr_scheduler import StepLR
 
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
+
+from sklearn.metrics import roc_curve, auc
+import matplotlib.pyplot as plt
+import numpy as np
+
+
 
 
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=10, device="cuda"):
+
+    # After the backward pass, check the gradients of the encoder's parameters
+    def check_gradients(model):
+        for name, param in model.named_parameters():
+            if param.requires_grad:  # Only check the parameters that require gradients
+                if param.grad is None:
+                    print(f"WARNING: {name} has no gradient!")
+                elif param.grad.abs().sum() == 0:
+                    print(f"WARNING: {name} has zero gradient!")
+                else:
+                    print(f"Gradients for {name}: {param.grad.abs().sum()}")
+
 
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
@@ -37,10 +56,12 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         running_loss = 0.0
         correct = 0
         total = 0
-        
+        # After the backward pass, check the gradients of the encoder's parameters
+
         for train_img_1, train_img_2, train_labels in tqdm(train_loader):
             train_img_1, train_img_2, train_labels = train_img_1.to(device), train_img_2.to(device), train_labels.to(device)
             
+
             # Forward pass
             outputs = model(train_img_1, train_img_2)
 
@@ -54,6 +75,12 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             # Backward pass and optimization
             optimizer.zero_grad()
             loss.backward()
+
+            check_gradients(model)  # Check gradients after backward pass
+
+
+
+
             optimizer.step()
 
             running_loss += loss
@@ -141,20 +168,28 @@ def validate_model(model, val_loader, criterion, device="cuda"):
     all_probs = np.vstack(all_probs)
     all_ground_truths = np.vstack(all_ground_truths)
 
+    per_class_auc, mean_auc = compute_masked_multilabel_auc_roc(all_probs, all_ground_truths)
+    print(f"Per-class AUC-ROC: {per_class_auc}")
+
+    
+    """
     # Mask out invalid labels
     masked_probs = all_probs[all_ground_truths != -1]
     masked_ground_truths = all_ground_truths[all_ground_truths != -1]
-
+    """
     # Hamming loss
     hloss = metric.compute()
+    """
     # Calculate AUC-ROC
     try:
         auc_roc = roc_auc_score(masked_ground_truths, masked_probs, average="macro")
     except ValueError:
         auc_roc = float('nan')  # Handle cases where AUC-ROC cannot be calculated
-
-    print(f"Validation Loss: {val_loss:.4f} | Validation Accuracy: {val_acc:.4f} | Validation Hamming loss: {hloss:.4f} | AUC-ROC: {auc_roc:.4f}")
+    """
+    print(f"Validation Loss: {val_loss:.4f} | Validation Accuracy: {val_acc:.4f} | Validation Hamming loss: {hloss:.4f} | AUC-ROC: {mean_auc:.4f}")
     #metrics_per_outcome(masked_ground_truths, masked_probs)
+    #show_roc_curve(masked_ground_truths, masked_probs)
+
 
     # ---------------------------
     # SAVE BEST MODEL
@@ -163,6 +198,48 @@ def validate_model(model, val_loader, criterion, device="cuda"):
         best_val_loss = val_loss
         torch.save(model.state_dict(), 'best_model.pth')
         print("Best model saved!")
+
+import numpy as np
+from sklearn.metrics import roc_auc_score
+
+def compute_masked_multilabel_auc_roc(all_probs, all_ground_truths, mask_value=-1):
+    """
+    Computes per-class and average AUC-ROC for multi-label classification,
+    handling missing labels using a mask value (e.g., -1).
+
+    Args:
+        all_probs (np.ndarray): Predicted probabilities, shape [N, C]
+        all_ground_truths (np.ndarray): Ground truth labels, shape [N, C]
+        mask_value (int or float): Value in labels to be ignored (e.g., -1 for missing)
+
+    Returns:
+        per_class_auc (list): AUC-ROC for each class (NaN if not computable)
+        mean_auc (float): Mean AUC-ROC across valid classes
+    """
+    assert all_probs.shape == all_ground_truths.shape, "Shape mismatch between predictions and labels."
+
+    valid_mask = all_ground_truths != mask_value
+    num_classes = all_probs.shape[1]
+
+    print(num_classes)
+
+    per_class_auc = []
+
+    for i in range(num_classes):
+        y_true = all_ground_truths[:, i][valid_mask[:, i]]
+        y_score = all_probs[:, i][valid_mask[:, i]]
+    
+        if len(np.unique(y_true)) > 1:
+            print(f"Computing AUC for class {i} with {len(y_true)} samples.")
+            auc = roc_auc_score(y_true, y_score)
+        else:
+            print(f"Not enough data to compute AUC for class {i}.")
+            auc = np.nan  # Not enough data to compute AUC
+        per_class_auc.append(auc)
+
+    mean_auc = np.nanmean(per_class_auc)
+
+    return per_class_auc, mean_auc
 
 
 def metrics_per_outcome(masked_ground_truths, masked_probs):
@@ -178,6 +255,20 @@ def metrics_per_outcome(masked_ground_truths, masked_probs):
             auc_roc = float('nan')  # Handle cases where AUC-ROC cannot be calculated
         print(f"{outcome} - AUC-ROC: {auc_roc}")
 
+def show_roc_curve(masked_ground_truths, masked_probs):
+    # Create ROC curve for each label
+    for i in range(masked_ground_truths.shape[1]):
+        fpr, tpr, _ = roc_curve(masked_ground_truths[:, i], masked_probs[:, i])
+        plt.plot(fpr, tpr, label=f'Label {i} (AUC = {auc(fpr, tpr):.2f})')
+
+    plt.plot([0, 1], [0, 1], 'k--')  # Diagonal line
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve')
+    plt.legend(loc='lower right')
+    plt.grid()
+    plt.savefig('roc_curve.png')
+    plt.close()
 
 # ---------------------------------------
 # READ DATA
@@ -207,63 +298,51 @@ all_labels = torch.tensor(pd_labels.values.tolist()) #Fill in correct path. resp
 #encoder = nn.Sequential(*list(resnet_model.children())[:-1])
 
 # HYPERPARAMETERS
-n_splits = 5
+#n_splits = 5
 batch_size = 2
-num_epochs = 30
+num_epochs = 100
 class_weights = torch.tensor([ 5.7600,  8.0000, 10.2857,  1.2152,  2.4202,  9.0000,  1.1803,  2.9091,
                             12.0000], dtype=torch.float32).to(device)
 
-# Initialize KFold
-mlskf = MultilabelStratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 # Store metrics for each fold
-fold_results = []
 best_val_loss = float('inf')
 
-# Perform 5-fold cross-validation
-for fold, (train_idx, val_idx) in enumerate(mlskf.split(image_pairs, all_labels)):
-    print(f"\nFold {fold + 1}/{n_splits}")
-    print("-" * 20)
+# Perform a single train-test split with stratification
+train_image_pairs, val_image_pairs, train_labels, val_labels = train_test_split(
+    image_pairs, all_labels, test_size=0.2, random_state=42
+)
 
-    # Split the data into training and validation sets for this fold
-    train_image_pairs = [image_pairs[i] for i in train_idx]
-    val_image_pairs = [image_pairs[i] for i in val_idx]
-    train_labels = all_labels[train_idx]
-    val_labels = all_labels[val_idx]
+print("Training label distribution:", train_labels.sum(dim=0))
+print("Validation label distribution:", val_labels.sum(dim=0))
 
-    # Create training and validation datasets
-    train_dataset = PairedMedicalDataset_Images(
-        train_image_pairs, train_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
-    )
-    val_dataset = PairedMedicalDataset_Images(
-        val_image_pairs, val_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
-    )
+# Create training and validation datasets
+train_dataset = PairedMedicalDataset_Images(
+    train_image_pairs, train_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
+)
+val_dataset = PairedMedicalDataset_Images(
+    val_image_pairs, val_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
+)
 
 
-    # Create DataLoaders
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
+# Create DataLoaders
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
+val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
 
-    # Initialize the model for this fold
-    model = SiameseNetwork_Images(resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False, pretrained=True, shortcut_type="A", bias_downsample=True))
-    model = model.to(device)
+# Initialize the model
+model = SiameseNetwork_Images(resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False, pretrained=True, shortcut_type="A", bias_downsample=True))
+model = model.to(device)
 
-    # Loss function
-    criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights, reduction='none')
+# Loss function
+criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights, reduction='none')
 
-    # Optimizer
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+# Optimizer
+optimizer = optim.Adam(model.parameters(), lr=1e-2)
 
-    # Learning rate scheduler
-    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
+# Learning rate scheduler
+scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
 
-    # Train the model for this fold
-    train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=num_epochs, device=device)
+# Train the model for this fold
+train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=num_epochs, device=device)
 
-# Calculate average metrics across all folds
-avg_val_loss = sum([result["val_loss"] for result in fold_results]) / n_splits
-avg_val_acc = sum([result["val_acc"] for result in fold_results]) / n_splits
-
-print("\nCross-Validation Results:")
-print(f"Average Val Loss: {avg_val_loss:.4f}")
-print(f"Average Val Acc: {avg_val_acc:.4f}")
+print("\nTraining and Validation Complete.")

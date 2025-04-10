@@ -1,8 +1,7 @@
 # Imports
 import torch
 import torch.nn as nn
-from models import SiameseNetwork, PairedMedicalDataset
-import shap
+from models import SiameseNetwork_Images, PairedMedicalDataset_Images
 import glob
 import os
 import pandas as pd
@@ -13,29 +12,25 @@ from monai.transforms import (
     Compose
 )
 import nibabel as nib
+from monai.networks.nets import resnet
+from tqdm import tqdm
 
-
+"""
 # Instantiate the base model (e.g., ResNet or other feature extractor)
-
 resnet_model = torch.hub.load('Warvito/MedicalNet-models', 'medicalnet_resnet10')
 
 # Remove the final classification layer (fc) to keep only the encoder part
 encoder = nn.Sequential(*list(resnet_model.children())[:-1])
+"""
 
-model = SiameseNetwork(encoder)
+encoder = resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False, pretrained=True, shortcut_type="A", bias_downsample=True)
+
+model = SiameseNetwork_Images(encoder)
 model.load_state_dict(torch.load("best_model.pth"))
+print("Model loaded successfully.")
 model.eval()
 
-class SiameseWrapper(nn.Module):
-    def __init__(self, model):
-        super(SiameseWrapper, self).__init__()
-        self.model = model
-
-    def forward(self, input):
-        image1, image2, metadata = input
-        return self.model(image1, image2, metadata)
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 data_dir = "/scratch/bmep/mfmakaske/training_scans/"
@@ -45,51 +40,52 @@ nifti_images = sorted(glob.glob(os.path.join(data_dir, "*.nii.gz")))
 # Create pairs (e.g., first and second file are paired)
 image_pairs = [(nifti_images[i], nifti_images[i + 1]) for i in range(0, len(nifti_images) - 1, 2)]
 
-pd_metadata = pd.read_csv(os.path.join(clinical_data_dir, "training_input.csv"))
-all_metadata = torch.tensor(pd_metadata.values.tolist())
 
 pd_labels = pd.read_csv(os.path.join(clinical_data_dir, "training_labels.csv"))
 all_labels = torch.tensor(pd_labels.values.tolist()) #Fill in correct path. response, PFS, and OS
 
 
-
 # Create training and validation datasets
-train_dataset = PairedMedicalDataset(
-    image_pairs, all_metadata, all_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
+train_dataset = PairedMedicalDataset_Images(
+    image_pairs, all_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
 )
 
 # Create DataLoaders
-data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=11, shuffle=True)
+data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
 
-#data
+probabilities = []
+labels = []
 
-# Create an iterator for the DataLoader
-data_iter = iter(data_loader)
+model.to(device)
 
-# Extract one batch
-batch = next(data_iter)
+with torch.no_grad():
+    for img_1, img_2, label in tqdm(data_loader):
+            img_1, img_2, label = img_1.to(device), img_2.to(device), label.to(device)
+            
+            # Forward pass
+            outputs = model(img_1, img_2)
 
-# Unpack the batch (if applicable)
-img1, img2, metadata, labels = batch
+            # Apply sigmoid to get probabilities
+            probs = torch.sigmoid(outputs)
+            
 
+            probabilities.extend(probs.cpu().numpy())
+            labels.extend(label.cpu().numpy())
+        
 
-# Dummy image pair input
-image1_test = img1[0].to("cuda")
-image2_test = img2[0].to("cuda")
-metadata_test = metadata[0].to("cuda")
+# Save probabilities and labels to a CSV file
+# Convert probabilities and labels to NumPy arrays
+probabilities = np.array(probabilities)  # Shape: [num_samples, num_classes]
+labels = np.array(labels)  # Shape: [num_samples, num_classes]
 
+# Create a DataFrame where each column corresponds to a class probability
+prob_columns = [f"Prob_Class_{i}" for i in range(probabilities.shape[1])]
+label_columns = [f"Label_Class_{i}" for i in range(labels.shape[1])]
 
-# Background for SHAP (used by DeepExplainer)
-image1_bg = img1[1:].to("cuda")
-image2_bg = img2[1:].to("cuda")
-metadata_bg = metadata[1:].to("cuda")
-
-wrapped_model = SiameseWrapper(model).to("cuda")
-
-# Use DeepExplainer for PyTorch models
-explainer = shap.GradientExplainer(
-    wrapped_model,
-    data=(image1_bg, image2_bg, metadata_bg)
+output_df = pd.DataFrame(
+    np.hstack([probabilities, labels]),  # Combine probabilities and labels horizontally
+    columns=prob_columns + label_columns  # Column names for probabilities and labels
 )
 
-shap_values = explainer.shap_values((image1_test, image2_test, metadata_test))
+# Save to CSV
+output_df.to_csv("output_probs_labels.csv", index=False)
