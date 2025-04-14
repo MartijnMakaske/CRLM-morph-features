@@ -1,7 +1,7 @@
 # Imports
 import torch
-import torch.nn as nn
-from models import SiameseNetwork_Images, PairedMedicalDataset_Images
+
+from utils import SiameseNetwork_Images, PairedMedicalDataset_Images
 import glob
 import os
 import pandas as pd
@@ -11,7 +11,7 @@ from monai.transforms import (
     ScaleIntensity,
     Compose
 )
-import nibabel as nib
+
 from monai.networks.nets import resnet
 from tqdm import tqdm
 

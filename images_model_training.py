@@ -3,10 +3,9 @@ import os
 import numpy as np
 import pandas as pd
 import glob
-import copy
 from tqdm import tqdm
 from monai.networks.nets import resnet
-from models import PairedMedicalDataset_Images, SiameseNetwork_Images
+from utils import PairedMedicalDataset_Images, SiameseNetwork_Images
 from torchmetrics.classification import MultilabelHammingDistance
 
 from monai.transforms import (
@@ -79,9 +78,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         print(f'Training complete. Train Loss: {epoch_loss:.4f} | Train Acc: {epoch_acc:.4f}')
         validate_model(model, val_loader, criterion, device)
 
-        # ---------------------------
-        # LEARNING RATE SCHEDULER STEP
-        # ---------------------------
+        # Learning rate scheduler step
         scheduler.step()
 
 

@@ -3,10 +3,10 @@ import os
 import numpy as np
 import pandas as pd
 import glob
-import copy
+
 from tqdm import tqdm
 from monai.networks.nets import resnet
-from models import PairedMedicalDataset_Images, SiameseNetwork_Images
+from utils import PairedMedicalDataset_Images, SiameseNetwork_Images
 from torchmetrics.classification import MultilabelHammingDistance
 
 from monai.transforms import (
@@ -19,16 +19,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 
-from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 import numpy as np
-
-
-
 
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=10, device="cuda"):
@@ -106,9 +102,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         print(f'Training complete. Train Loss: {epoch_loss:.4f} | Train Acc: {epoch_acc:.4f}')
         validate_model(model, val_loader, criterion, device)
 
-        # ---------------------------
-        # LEARNING RATE SCHEDULER STEP
-        # ---------------------------
+
+        # Learning rate scheduler step
         scheduler.step()
 
 
@@ -172,22 +167,10 @@ def validate_model(model, val_loader, criterion, device="cuda"):
     print(f"Per-class AUC-ROC: {per_class_auc}")
 
     
-    """
-    # Mask out invalid labels
-    masked_probs = all_probs[all_ground_truths != -1]
-    masked_ground_truths = all_ground_truths[all_ground_truths != -1]
-    """
     # Hamming loss
     hloss = metric.compute()
-    """
-    # Calculate AUC-ROC
-    try:
-        auc_roc = roc_auc_score(masked_ground_truths, masked_probs, average="macro")
-    except ValueError:
-        auc_roc = float('nan')  # Handle cases where AUC-ROC cannot be calculated
-    """
-    print(f"Validation Loss: {val_loss:.4f} | Validation Accuracy: {val_acc:.4f} | Validation Hamming loss: {hloss:.4f} | AUC-ROC: {mean_auc:.4f}")
-    #metrics_per_outcome(masked_ground_truths, masked_probs)
+
+    print(f"Validation Loss: {val_loss:.4f} | Validation Accuracy: {val_acc:.4f} | Validation Hamming loss: {hloss:.4f} | Validation AUC-ROC: {mean_auc:.4f}")
     #show_roc_curve(masked_ground_truths, masked_probs)
 
 
@@ -199,8 +182,6 @@ def validate_model(model, val_loader, criterion, device="cuda"):
         torch.save(model.state_dict(), 'best_model.pth')
         print("Best model saved!")
 
-import numpy as np
-from sklearn.metrics import roc_auc_score
 
 def compute_masked_multilabel_auc_roc(all_probs, all_ground_truths, mask_value=-1):
     """
@@ -220,8 +201,6 @@ def compute_masked_multilabel_auc_roc(all_probs, all_ground_truths, mask_value=-
 
     valid_mask = all_ground_truths != mask_value
     num_classes = all_probs.shape[1]
-
-    print(num_classes)
 
     per_class_auc = []
 
@@ -254,6 +233,7 @@ def metrics_per_outcome(masked_ground_truths, masked_probs):
         except ValueError:
             auc_roc = float('nan')  # Handle cases where AUC-ROC cannot be calculated
         print(f"{outcome} - AUC-ROC: {auc_roc}")
+
 
 def show_roc_curve(masked_ground_truths, masked_probs):
     # Create ROC curve for each label
@@ -298,14 +278,13 @@ all_labels = torch.tensor(pd_labels.values.tolist()) #Fill in correct path. resp
 #encoder = nn.Sequential(*list(resnet_model.children())[:-1])
 
 # HYPERPARAMETERS
-#n_splits = 5
 batch_size = 2
 num_epochs = 100
 class_weights = torch.tensor([ 5.7600,  8.0000, 10.2857,  1.2152,  2.4202,  9.0000,  1.1803,  2.9091,
                             12.0000], dtype=torch.float32).to(device)
 
 
-# Store metrics for each fold
+# Store metrics
 best_val_loss = float('inf')
 
 # Perform a single train-test split with stratification

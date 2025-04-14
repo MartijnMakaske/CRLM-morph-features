@@ -1,10 +1,6 @@
 # Imports
 import torch
-import torch.nn as nn
 
-import glob
-import os
-import pandas as pd
 import numpy as np
 from monai.transforms import (
     Resize,
@@ -12,8 +8,9 @@ from monai.transforms import (
     Compose
 )
 import nibabel as nib
-#import models
-from models import PairedMedicalDataset_Full, PairedMedicalDataset_Images, SiameseNetwork_Full, SiameseNetwork_Images
+
+from utils import PairedMedicalDataset_Full, PairedMedicalDataset_Images, SiameseNetwork_Full, SiameseNetwork_Images
+
 import matplotlib.pyplot as plt
 from monai.networks.nets import resnet
 import matplotlib.pyplot as plt
@@ -32,13 +29,10 @@ encoder = resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False
 
 model = SiameseNetwork_Images(encoder)
 model.load_state_dict(torch.load("best_model.pth"))
-model.eval()
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model.to(device)
-
 
 #load images
 image1_path = "/scratch/bmep/mfmakaske/training_tumor_scans/CAESAR017_0_tumor.nii.gz"
@@ -52,7 +46,7 @@ image2 = nib.load(image2_path).get_fdata()
 image1 = np.expand_dims(image1, axis=0)
 image2 = np.expand_dims(image2, axis=0)
 
-# Apply the transformations FIGURE OUT CORRECT RESIZING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# Apply the transformations -------------  FIGURE OUT CORRECT RESIZING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
 transform_compose = Compose(transform)
 image1 = transform_compose(image1)
