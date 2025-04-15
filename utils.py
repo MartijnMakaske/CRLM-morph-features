@@ -31,7 +31,6 @@ class PairedMedicalDataset_Images(Dataset):
         img2 = np.expand_dims(img2, axis=0)
         
         label = self.labels[idx]
-
         label = label.float()
         
         if self.transform:

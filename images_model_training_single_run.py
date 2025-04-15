@@ -29,18 +29,6 @@ import numpy as np
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=10, device="cuda"):
 
-    # After the backward pass, check the gradients of the encoder's parameters
-    def check_gradients(model):
-        for name, param in model.named_parameters():
-            if param.requires_grad:  # Only check the parameters that require gradients
-                if param.grad is None:
-                    print(f"WARNING: {name} has no gradient!")
-                elif param.grad.abs().sum() == 0:
-                    print(f"WARNING: {name} has zero gradient!")
-                else:
-                    print(f"Gradients for {name}: {param.grad.abs().sum()}")
-
-
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
         print('-' * 20)
@@ -71,12 +59,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             # Backward pass and optimization
             optimizer.zero_grad()
             loss.backward()
-
-            check_gradients(model)  # Check gradients after backward pass
-
-
-
-
             optimizer.step()
 
             running_loss += loss
@@ -109,10 +91,12 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
 def validate_model(model, val_loader, criterion, device="cuda"):
     model.eval()
-    global best_val_loss
     val_loss = 0.0
     correct = 0
     total = 0
+
+    global best_val_auc
+    global model_name
 
     all_probs = []
     all_ground_truths = []
@@ -177,12 +161,16 @@ def validate_model(model, val_loader, criterion, device="cuda"):
     # ---------------------------
     # SAVE BEST MODEL
     # ---------------------------
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        torch.save(model.state_dict(), 'best_model.pth')
+    if mean_auc > best_val_auc:
+        best_val_auc = mean_auc
+        torch.save(model.state_dict(), f'./models/{model_name}.pth')
         print("Best model saved!")
 
+        # Generate and save the ROC curve
+        plot_multilabel_roc_masked(all_ground_truths, all_probs, model_name=model_name)
 
+
+#make this plot the avarage roc curve as well
 def compute_masked_multilabel_auc_roc(all_probs, all_ground_truths, mask_value=-1):
     """
     Computes per-class and average AUC-ROC for multi-label classification,
@@ -209,7 +197,6 @@ def compute_masked_multilabel_auc_roc(all_probs, all_ground_truths, mask_value=-
         y_score = all_probs[:, i][valid_mask[:, i]]
     
         if len(np.unique(y_true)) > 1:
-            print(f"Computing AUC for class {i} with {len(y_true)} samples.")
             auc = roc_auc_score(y_true, y_score)
         else:
             print(f"Not enough data to compute AUC for class {i}.")
@@ -235,20 +222,49 @@ def metrics_per_outcome(masked_ground_truths, masked_probs):
         print(f"{outcome} - AUC-ROC: {auc_roc}")
 
 
-def show_roc_curve(masked_ground_truths, masked_probs):
-    # Create ROC curve for each label
-    for i in range(masked_ground_truths.shape[1]):
-        fpr, tpr, _ = roc_curve(masked_ground_truths[:, i], masked_probs[:, i])
-        plt.plot(fpr, tpr, label=f'Label {i} (AUC = {auc(fpr, tpr):.2f})')
 
-    plt.plot([0, 1], [0, 1], 'k--')  # Diagonal line
+def plot_multilabel_roc_masked(y_true, y_probs, class_names=None, model_name="model"):
+    """
+    Plots ROC curves for each class in a multi-label classification problem, masking -1 labels.
+    
+    Args:
+        y_true (np.ndarray): Ground truth binary labels (N, C), where -1 means missing label.
+        y_probs (np.ndarray): Predicted probabilities (N, C)
+        class_names (List[str], optional): Names of each class.
+        save_path (str, optional): If provided, saves the plot.
+    """
+    n_classes = y_true.shape[1]
+    plt.figure(figsize=(10, 8))
+
+    for i in range(n_classes):
+        # Mask missing labels
+        valid_idx = y_true[:, i] != -1
+        if valid_idx.sum() == 0:
+            print(f"Skipping class {i}: all labels missing")
+            continue
+
+        y_true_valid = y_true[valid_idx, i]
+        y_probs_valid = y_probs[valid_idx, i]
+
+        fpr, tpr, _ = roc_curve(y_true_valid, y_probs_valid)
+        roc_auc = auc(fpr, tpr)
+
+        label = f"Class {i}" if class_names is None else class_names[i]
+        plt.plot(fpr, tpr, label=f'{label} (AUC = {roc_auc:.2f})')
+
+    plt.plot([0, 1], [0, 1], 'k--', label='Chance')
+    plt.xlim([0, 1])
+    plt.ylim([0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve')
+    plt.title('Masked ROC Curves for Multi-label Classification')
     plt.legend(loc='lower right')
-    plt.grid()
-    plt.savefig('roc_curve.png')
-    plt.close()
+
+    save_path = f"./roc_curves/{model_name}_roc_curve.png"
+    plt.savefig(save_path)
+    print(f"Saved ROC plot to {save_path}")
+   
+
 
 # ---------------------------------------
 # READ DATA
@@ -257,7 +273,7 @@ def show_roc_curve(masked_ground_truths, masked_probs):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-data_dir = "/scratch/bmep/mfmakaske/training_tumor_scans/"
+data_dir = "/scratch/bmep/mfmakaske/training_scans/"
 clinical_data_dir = "/scratch/bmep/mfmakaske/"
 nifti_images = sorted(glob.glob(os.path.join(data_dir, "*.nii.gz")))   
 
@@ -278,14 +294,15 @@ all_labels = torch.tensor(pd_labels.values.tolist()) #Fill in correct path. resp
 #encoder = nn.Sequential(*list(resnet_model.children())[:-1])
 
 # HYPERPARAMETERS
-batch_size = 2
-num_epochs = 100
+batch_size = 4
+num_epochs = 30
+model_name = "model_full_images_lr3"
 class_weights = torch.tensor([ 5.7600,  8.0000, 10.2857,  1.2152,  2.4202,  9.0000,  1.1803,  2.9091,
                             12.0000], dtype=torch.float32).to(device)
 
 
 # Store metrics
-best_val_loss = float('inf')
+best_val_auc = 0.0
 
 # Perform a single train-test split with stratification
 train_image_pairs, val_image_pairs, train_labels, val_labels = train_test_split(
@@ -297,10 +314,10 @@ print("Validation label distribution:", val_labels.sum(dim=0))
 
 # Create training and validation datasets
 train_dataset = PairedMedicalDataset_Images(
-    train_image_pairs, train_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
+    train_image_pairs, train_labels, transform=[ScaleIntensity(), Resize((256, 256, 64), mode="trilinear")]
 )
 val_dataset = PairedMedicalDataset_Images(
-    val_image_pairs, val_labels, transform=[ScaleIntensity(), Resize((64, 256, 256), mode="trilinear")]
+    val_image_pairs, val_labels, transform=[ScaleIntensity(), Resize((256, 256, 64), mode="trilinear")]
 )
 
 
@@ -309,17 +326,19 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
 
 # Initialize the model
-model = SiameseNetwork_Images(resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False, pretrained=True, shortcut_type="A", bias_downsample=True))
+encoder = resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False, pretrained=True, shortcut_type="A", bias_downsample=True)
+
+model = SiameseNetwork_Images(encoder)
 model = model.to(device)
 
 # Loss function
 criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights, reduction='none')
 
 # Optimizer
-optimizer = optim.Adam(model.parameters(), lr=1e-2)
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
 # Learning rate scheduler
-scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
+scheduler = StepLR(optimizer, step_size= (num_epochs//3) , gamma=0.1)
 
 # Train the model for this fold
 train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=num_epochs, device=device)
