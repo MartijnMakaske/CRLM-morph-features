@@ -1,7 +1,7 @@
 # Imports
 import torch
 
-from utils import SiameseNetwork_Images, PairedMedicalDataset_Images
+from training_utils import SiameseNetwork_Images, PairedMedicalDataset_Images
 import glob
 import os
 import pandas as pd

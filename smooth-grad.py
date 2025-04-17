@@ -9,7 +9,7 @@ from monai.transforms import (
 )
 import nibabel as nib
 
-from utils import PairedMedicalDataset_Full, PairedMedicalDataset_Images, SiameseNetwork_Full, SiameseNetwork_Images
+from training_utils import PairedMedicalDataset_Full, PairedMedicalDataset_Images, SiameseNetwork_Full, SiameseNetwork_Images
 
 import matplotlib.pyplot as plt
 from monai.networks.nets import resnet

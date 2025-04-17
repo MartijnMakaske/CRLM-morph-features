@@ -5,7 +5,7 @@ import pandas as pd
 import glob
 from tqdm import tqdm
 from monai.networks.nets import resnet
-from utils import PairedMedicalDataset_Images, SiameseNetwork_Images
+from training_utils import PairedMedicalDataset_Images, SiameseNetwork_Images
 from torchmetrics.classification import MultilabelHammingDistance
 
 from monai.transforms import (
