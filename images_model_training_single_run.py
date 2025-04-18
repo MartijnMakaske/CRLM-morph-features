@@ -10,7 +10,8 @@ from training_utils import PairedMedicalDataset_Images, SiameseNetwork_Images_OS
 
 from monai.transforms import (
     Resize,
-    ScaleIntensityRanged,
+    ScaleIntensityRange,
+    Transpose
 )
 
 import torch
@@ -24,10 +25,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
 import matplotlib.pyplot as plt
 import numpy as np
+import wandb
 
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=10, device="cuda"):
-
+    #global run
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
         print('-' * 20)
@@ -59,7 +61,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
             correct += (preds == train_labels).sum().item()
             total += train_labels.size(0)
-          
+
+            # Log metrics to wandb.
+            #run.log({"val acc": correct, "val loss": loss})
+
+
             # Free memory
             del train_img_1, train_img_2, train_labels, outputs, preds
             torch.cuda.empty_cache()
@@ -83,6 +89,7 @@ def validate_model(model, val_loader, criterion, device="cuda"):
 
     global best_val_acc
     global model_name
+    #global run
 
     all_preds = []
     all_ground_truths = []
@@ -116,7 +123,6 @@ def validate_model(model, val_loader, criterion, device="cuda"):
     val_loss /= len(val_loader)
     val_acc = correct / total
 
-
     f1 = f1_score(all_labels, all_preds, average="weighted")  # Use "weighted" for class imbalance
 
     print(f"Validation Loss: {val_loss:.4f} | Validation Accuracy: {val_acc:.4f} | Validation F1 score: {f1:.4f}")
@@ -142,6 +148,10 @@ print(f"Using device: {device}")
 
 data_dir = "/scratch/bmep/mfmakaske/training_scans/"
 clinical_data_dir = "/scratch/bmep/mfmakaske/"
+
+#data_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/Training/paired_scans"
+#clinical_data_dir = "C:/Users/P095550/Documents/CRLM-morph-features/CRLM-morph-features"
+
 nifti_images = sorted(glob.glob(os.path.join(data_dir, "*.nii.gz")))   
 
 # Create pairs (e.g., first and second file are paired)
@@ -150,6 +160,24 @@ image_pairs = [(nifti_images[i], nifti_images[i + 1]) for i in range(0, len(nift
 pd_labels = pd.read_csv(os.path.join(clinical_data_dir, "training_labels_OS.csv"))
 all_labels = torch.tensor(pd_labels.values.tolist()) #Fill in correct path. response, PFS, and OS
 
+#-------------------------------------
+# TRACK WITH WANDB
+#-------------------------------------
+"""
+run = wandb.init(
+    # Set the wandb entity where your project will be logged (generally your team name).
+    entity="martijnmakaske-vrije-universiteit-amsterdam",
+    # Set the wandb project where this run will be logged.
+    project="CRLM-morph-features",
+    # Track hyperparameters and run metadata.
+    config={
+        "learning_rate": 0.001,
+        "architecture": "Siames-Morph-CNN",
+        "dataset": "CAIRO scaled images",
+        "epochs": 1,
+    },
+)
+"""
 
 #------------------------------------
 # INITIALIZE ENCODER
@@ -161,11 +189,9 @@ all_labels = torch.tensor(pd_labels.values.tolist()) #Fill in correct path. resp
 #encoder = nn.Sequential(*list(resnet_model.children())[:-1])
 
 # HYPERPARAMETERS
-batch_size = 1
-num_epochs = 30
+batch_size = 4
+num_epochs = 100
 model_name = "model_full_images_lr3"
-#class_weights = torch.tensor([ 5.7600,  8.0000, 10.2857,  1.2152,  2.4202,  9.0000,  1.1803,  2.9091,
-#                            12.0000], dtype=torch.float32).to(device)
 class_weights = torch.tensor([1.6363636363636365, 0.496551724137931, 0.96, 3.0], dtype=torch.float32).to(device)
 
 # Store metrics
@@ -176,22 +202,21 @@ train_image_pairs, val_image_pairs, train_labels, val_labels = train_test_split(
     image_pairs, all_labels, test_size=0.2, random_state=42
 )
 
-print("Training label distribution:", train_labels.sum(dim=0))
-print("Validation label distribution:", val_labels.sum(dim=0))
-
 # Change back to original size: (256, 256, 64)
 # Create training and validation datasets
 train_dataset = PairedMedicalDataset_Images(
-    train_image_pairs, train_labels, transform=[ScaleIntensityRanged(a_min=-200,
+    train_image_pairs, train_labels, transform=[ScaleIntensityRange(a_min=-200,
                                                                      a_max=400, b_min=0.0, b_max=1.0, clip=True), 
-                                                Resize((128, 128, 32), 
-                                                mode="trilinear")]
+                                                Resize((256, 256, 64), 
+                                                mode="trilinear"),
+                                                Transpose((0, 3, 2, 1))]
 )
 val_dataset = PairedMedicalDataset_Images(
-    val_image_pairs, val_labels, transform=[ScaleIntensityRanged(a_min=-200,
+    val_image_pairs, val_labels, transform=[ScaleIntensityRange(a_min=-200,
                                                                  a_max=400, b_min=0.0, b_max=1.0, clip=True), 
-                                            Resize((128, 128, 32), 
-                                            mode="trilinear")]
+                                            Resize((256, 256, 64), 
+                                            mode="trilinear"),
+                                            Transpose((0, 3, 2, 1))]
 )
 
 
@@ -217,4 +242,5 @@ scheduler = StepLR(optimizer, step_size= (num_epochs//3) , gamma=0.1)
 # Train the model for this fold
 train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=num_epochs, device=device)
 
+#run.finish()
 print("\nTraining and Validation Complete.")
