@@ -1,4 +1,3 @@
-
 # Imports
 import numpy as np
 import nibabel as nib
@@ -32,12 +31,12 @@ class PairedMedicalDataset_Images(Dataset):
 
         label = self.labels[idx]
         label = label.float()
-        
+ 
         if self.transform:
             img1 = self.transform(img1)
             img2 = self.transform(img2)
-            
-        return img1, img2, label
+
+        return img1.as_tensor(), img2.as_tensor(), label    
     
 class PairedMedicalDataset_Full(Dataset):
     def __init__(self, image_pairs, metadata, labels, transform=None):
@@ -69,7 +68,7 @@ class PairedMedicalDataset_Full(Dataset):
             img1 = self.transform(img1)
             img2 = self.transform(img2)
         
-        return img1, img2, metadata, label
+        return img1.as_tensor(), img2.as_tensor(), metadata, label
 
 class PairedMedicalDataset_Images_OS(Dataset):
     def __init__(self, image_pairs, labels, transform=None):

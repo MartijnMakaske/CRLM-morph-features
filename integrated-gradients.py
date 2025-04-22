@@ -4,12 +4,13 @@ import torch
 import numpy as np
 from monai.transforms import (
     Resize,
-    ScaleIntensity,
-    Compose
+    ScaleIntensityRange,
+    Compose,
+    Transpose
 )
 import nibabel as nib
 
-from training_utils import PairedMedicalDataset_Full, PairedMedicalDataset_Images, SiameseNetwork_Full, SiameseNetwork_Images
+from training_utils import PairedMedicalDataset_Full, PairedMedicalDataset_Images, SiameseNetwork_Full, SiameseNetwork_Images_OS
 
 import matplotlib.pyplot as plt
 from monai.networks.nets import resnet
@@ -42,15 +43,16 @@ class WrappedSiameseModel(nn.Module):
 
 encoder = resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False, pretrained=True, shortcut_type="A", bias_downsample=True)
 
-model = SiameseNetwork_Images(encoder)
-model.load_state_dict(torch.load("./models/model_full_images_lr3.pth"))
+model = SiameseNetwork_Images_OS(encoder)
+model.load_state_dict(torch.load("./models/model_tumor_images_lr3.pth"))
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 #load images
-image1_path = "/scratch/bmep/mfmakaske/training_scans/CAESAR032_0.nii.gz"
-image2_path = "/scratch/bmep/mfmakaske/training_scans/CAESAR032_1.nii.gz"
+image1_path = "/scratch/bmep/mfmakaske/training_tumor_scans/CAESAR032_0_tumor.nii.gz"
+image2_path = "/scratch/bmep/mfmakaske/training_tumor_scans/CAESAR032_1_tumor.nii.gz"
 
 # Load the images using nibabel
 image1 = nib.load(image1_path).get_fdata()
@@ -61,7 +63,8 @@ image1 = np.expand_dims(image1, axis=0)
 image2 = np.expand_dims(image2, axis=0)
 
 # Apply the transformations 
-transform=[ScaleIntensity(), Resize((256, 256, 64), mode="trilinear")]
+transform=[ScaleIntensityRange(a_min=-100, a_max=200, b_min=0.0, b_max=1.0, clip=True), Resize((256, 256, 64), mode="trilinear"),
+                                                Transpose((0, 3, 2, 1))]
 transform_compose = Compose(transform)
 image1 = transform_compose(image1)
 image2 = transform_compose(image2)
@@ -75,6 +78,7 @@ img1 = image1.clone().detach().requires_grad_(True)
 img2 = image2.clone().detach().requires_grad_(True)
 
 
+
 # Assume `img1` and `img2` are both shaped [1, 1, D, H, W]
 input_combined = torch.cat([img1, img2], dim=1).requires_grad_()  # shape: [1, 2, D, H, W]
 
@@ -83,7 +87,7 @@ wrapped_model = WrappedSiameseModel(model).to(device).eval()
 input_combined = input_combined.to(device)
 
 # Choose target class (e.g., class index 3)
-target_class = 6
+target_class = 2
 
 # Run IG
 ig = IntegratedGradients(wrapped_model)
@@ -104,23 +108,24 @@ from matplotlib.widgets import Slider
 img1_attr_normalized = (img1_attr - img1_attr.min()) / (img1_attr.max() - img1_attr.min())
 img2_attr_normalized = (img2_attr - img2_attr.min()) / (img2_attr.max() - img2_attr.min())
 
+
 # Convert the original images to NumPy arrays for visualization
 image1_np = img1.squeeze().detach().cpu().numpy()  # Remove batch and channel dimensions
 image2_np = img2.squeeze().detach().cpu().numpy()
 
 # Initial slice index
-slice_idx = img1_attr.shape[2] // 2  # Start with the middle slice
+slice_idx = img1_attr.shape[0] // 2  # Start with the middle slice
 
 # Create the figure and axes
 fig, ax = plt.subplots(2, 2, figsize=(12, 12))  # 2 rows, 2 columns
 plt.subplots_adjust(bottom=0.2)  # Leave space for the slider
 
 # Display the initial slices
-image1_slice = image1_np[:, :, slice_idx]
-saliency1_slice = img1_attr_normalized[:, :, slice_idx]
+image1_slice = image1_np[slice_idx, :, :]
+saliency1_slice = img1_attr_normalized[slice_idx, :, :]
 
-image2_slice = image2_np[:, :, slice_idx]
-saliency2_slice = img2_attr_normalized[:, :, slice_idx]
+image2_slice = image2_np[slice_idx, :, :]
+saliency2_slice = img2_attr_normalized[slice_idx, :, :]
 
 # Plot the first original image
 original_img1_plot = ax[0, 0].imshow(image1_slice, cmap='gray')
@@ -146,18 +151,18 @@ ax[1, 1].axis('off')
 
 # Add a slider for scrolling through slices
 ax_slider = plt.axes([0.2, 0.05, 0.6, 0.03])  # Position of the slider
-slice_slider = Slider(ax_slider, 'Slice', 0, img1_attr.shape[2] - 1, valinit=slice_idx, valstep=1)
+slice_slider = Slider(ax_slider, 'Slice', 0, img1_attr.shape[0] - 1, valinit=slice_idx, valstep=1)
 
 # Update function for the slider
 def update(val):
     slice_idx = int(slice_slider.val)  # Get the current slice index
 
     # Update the slices
-    image1_slice = image1_np[:, :, slice_idx]
-    saliency1_slice = img1_attr_normalized[:, :, slice_idx]
+    image1_slice = image1_np[slice_idx, :, :]
+    saliency1_slice = img1_attr_normalized[slice_idx, :, :]
 
-    image2_slice = image2_np[:, :, slice_idx]
-    saliency2_slice = img2_attr_normalized[:, :, slice_idx]
+    image2_slice = image2_np[slice_idx, :, :]
+    saliency2_slice = img2_attr_normalized[slice_idx, :, :]
 
     # Update the original image plots
     original_img1_plot.set_data(image1_slice)
