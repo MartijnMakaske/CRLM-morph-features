@@ -1,6 +1,5 @@
 #imports
 import os
-import numpy as np
 import pandas as pd
 import glob
 
@@ -24,20 +23,19 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 
 from sklearn.metrics import f1_score
-import matplotlib.pyplot as plt
-import numpy as np
 import wandb
 
-from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import label_binarize
 import torch.nn.functional as F
 
-
+# Optimize for performance with torch.compile
 torch.set_float32_matmul_precision('high')
 
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=10, device="cuda"):
+
     global run
+
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
         print('-' * 20)
@@ -46,6 +44,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         # TRAINING PHASE
         # ---------------------------
         model.train()
+
         running_loss = 0.0
         correct = 0
         total = 0
@@ -73,14 +72,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             all_probs_train.append(probs)
             all_labels_train.append(labels)
 
-
             running_loss += loss     
             preds = torch.argmax(outputs, dim=1)
 
             correct += (preds == train_labels).sum().item()
             total += train_labels.size(0)
 
-            # Free memory
+            # Free memory explicitly
             del train_img_1, train_img_2, train_labels, outputs, preds
             torch.cuda.empty_cache()
 
@@ -100,11 +98,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         except ValueError:
             epoch_auc = float('nan')  # In case only 1 class is present in the batch
 
+        # Log metrics to wandb
         run.log({"train acc": epoch_acc, "train loss": epoch_loss, "train auc": epoch_auc})
 
         print(f'Train Loss: {epoch_loss:.4f} | Train Acc: {epoch_acc:.4f} | Train AUC: {epoch_auc:.4f}')
         validate_model(model, val_loader, criterion, device)
-
 
         # Learning rate scheduler step
         scheduler.step()
@@ -112,6 +110,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
 def validate_model(model, val_loader, criterion, device="cuda"):
     model.eval()
+
     val_loss = 0.0
     correct = 0
     total = 0
@@ -122,7 +121,6 @@ def validate_model(model, val_loader, criterion, device="cuda"):
 
     all_preds = []
     all_ground_truths = []
-
     all_probs_val = []
 
     with torch.no_grad():
@@ -132,7 +130,6 @@ def validate_model(model, val_loader, criterion, device="cuda"):
             # Forward pass
             outputs = model(val_img_1, val_img_2)
 
-            # Apply the mask to the loss
             val_labels = val_labels.squeeze(1).long()
             loss = criterion(outputs, val_labels)
 
@@ -152,7 +149,7 @@ def validate_model(model, val_loader, criterion, device="cuda"):
             all_preds.extend(preds.cpu().numpy())
             all_ground_truths.extend(val_labels.cpu().numpy())
 
-            # Free memory
+            # Free memory explicitly
             del val_img_1, val_img_2, val_labels, outputs, preds
             torch.cuda.empty_cache()
             
@@ -165,7 +162,6 @@ def validate_model(model, val_loader, criterion, device="cuda"):
     # Stack all predictions and labels
     all_probs_val = torch.cat(all_probs_val).numpy()
 
-
     # One-hot encode the labels for multiclass AUC
     all_ground_truths_val_oh = label_binarize(all_ground_truths, classes=[0,1,2,3])
 
@@ -177,14 +173,11 @@ def validate_model(model, val_loader, criterion, device="cuda"):
 
 
     print(f"Validation Loss: {val_loss:.4f} | Validation Accuracy: {val_acc:.4f} | Validation F1 score: {f1:.4f} | Validation AUC: {val_auc:.4f}")
-    #show_roc_curve(masked_ground_truths, masked_probs)
 
-    # Log metrics to wandb.
+    # Log metrics to wandb
     run.log({"val acc": val_acc, "val loss": val_loss, "val f1": f1, "val auc": val_auc})
 
-    # ---------------------------
-    # SAVE BEST MODEL
-    # ---------------------------
+    # Save best model based on validation accuracy
     if val_acc > best_val_acc:
         best_val_acc = val_acc
         torch.save(model._orig_mod.state_dict(), f'./models/{model_name}.pth')
@@ -213,13 +206,15 @@ image_pairs = [(nifti_images[i], nifti_images[i + 1]) for i in range(0, len(nift
 pd_labels = pd.read_csv(os.path.join(clinical_data_dir, "training_labels_OS.csv"))
 all_labels = torch.tensor(pd_labels.values.tolist())
 
+# ---------------------------------------
 # HYPERPARAMETERS
+# ---------------------------------------
 batch_size = 8
 num_epochs = 100
-model_name = "model_tumor_images_lr3_100epochs"
-class_weights = torch.tensor([1.6363636363636365, 0.496551724137931, 0.96, 3.0], dtype=torch.float32).to(device)
 learning_rate = 1e-3
+model_name = "model_full_images_lr3_100epochs"
 
+class_weights = torch.tensor([1.6363636363636365, 0.496551724137931, 0.96, 3.0], dtype=torch.float32).to(device)
 
 #-------------------------------------
 # TRACK WITH WANDB
@@ -240,7 +235,7 @@ run = wandb.init(
 )
 
 
-# Store metrics
+# Initialize best validation accuracy
 best_val_acc = 0.0
 
 # Perform a single train-test split with stratification
@@ -266,7 +261,6 @@ val_dataset = PairedMedicalDataset_Images(
                                             EnsureType(data_type="tensor")]
 )
 
-
 # Create DataLoaders
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
@@ -277,27 +271,24 @@ encoder = resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False
 # Freeze the weights for the first 3 layers of the encoder
 """
 for name, layer in encoder.named_children():
-    if "layer1" in name or "layer2" in name or "layer3" in name:  # Freeze the first 3 layers
+    if "layer4" not in name:  # Freeze the first 3 layers
         for param in layer.parameters():
             param.requires_grad = False
         print(f"Froze layer: {name}")
 
 
-# Check which layers have requires_grad enabled
+# print which layers are trainable and which are frozen
 for name, param in encoder.named_parameters():
     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-# Freeze all layers
-#for param in encoder.parameters():
-#    param.requires_grad = False
 """
+
 model = torch.compile(SiameseNetwork_Images_OS(encoder))
 model = model.to(device)
-
 
 # Loss function
 criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-# Optimizer
+# Optimizer (when overfitting, use weight decay or AdamW)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
 # Learning rate scheduler

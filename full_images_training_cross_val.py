@@ -183,7 +183,7 @@ def metrics_per_outcome(masked_ground_truths, masked_probs):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-data_dir = "/scratch/bmep/mfmakaske/training_tumor_scans/"
+data_dir = "/scratch/bmep/mfmakaske/training_scans/"
 clinical_data_dir = "/scratch/bmep/mfmakaske/"
 nifti_images = sorted(glob.glob(os.path.join(data_dir, "*.nii.gz")))   
 

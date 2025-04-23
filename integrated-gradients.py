@@ -44,15 +44,15 @@ class WrappedSiameseModel(nn.Module):
 encoder = resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False, pretrained=True, shortcut_type="A", bias_downsample=True)
 
 model = SiameseNetwork_Images_OS(encoder)
-model.load_state_dict(torch.load("./models/model_tumor_images_lr3.pth"))
+model.load_state_dict(torch.load("./models/model_tumor_images_lr3_100epochs.pth"))
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 #load images
-image1_path = "/scratch/bmep/mfmakaske/training_tumor_scans/CAESAR032_0_tumor.nii.gz"
-image2_path = "/scratch/bmep/mfmakaske/training_tumor_scans/CAESAR032_1_tumor.nii.gz"
+image1_path = "/scratch/bmep/mfmakaske/training_tumor_scans/CAESAR584_0_tumor.nii.gz"
+image2_path = "/scratch/bmep/mfmakaske/training_tumor_scans/CAESAR584_1_tumor.nii.gz"
 
 # Load the images using nibabel
 image1 = nib.load(image1_path).get_fdata()
