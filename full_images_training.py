@@ -196,7 +196,7 @@ data_dir = "/scratch/bmep/mfmakaske/training_scans/"
 clinical_data_dir = "/scratch/bmep/mfmakaske/"
 
 #data_dir = "L:/Basic/divi/jstoker/slicer_pdac/Master Students WS 24/Martijn/data/Training/paired_tumor_scans"
-#clinical_data_dir = "C:/Users/P095550/Documents/CRLM-morph-features/CRLM-morph-features"
+#clinical_data_dir = "C:/Users/P095550/Documents/CRLM-morph-features/CRLM-morph-features/training_data"
 
 nifti_images = sorted(glob.glob(os.path.join(data_dir, "*.nii.gz")))   
 
@@ -212,7 +212,7 @@ all_labels = torch.tensor(pd_labels.values.tolist())
 batch_size = 8
 num_epochs = 100
 learning_rate = 1e-3
-model_name = "model_full_images_lr3_100epochs"
+model_name = "model_full_images_lr3_100epochs_AdamW_batch8"
 
 class_weights = torch.tensor([1.6363636363636365, 0.496551724137931, 0.96, 3.0], dtype=torch.float32).to(device)
 
@@ -276,12 +276,14 @@ for name, layer in encoder.named_children():
             param.requires_grad = False
         print(f"Froze layer: {name}")
 
+# Freeze all layers of the encoder
+for param in encoder.parameters():
+    param.requires_grad = False
 
 # print which layers are trainable and which are frozen
 for name, param in encoder.named_parameters():
     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
 """
-
 model = torch.compile(SiameseNetwork_Images_OS(encoder))
 model = model.to(device)
 
@@ -289,7 +291,7 @@ model = model.to(device)
 criterion = nn.CrossEntropyLoss(weight=class_weights)
 
 # Optimizer (when overfitting, use weight decay or AdamW)
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = optim.AdamW(model.classifier.parameters(), lr=learning_rate, weight_decay=1e-3)
 
 # Learning rate scheduler
 scheduler = StepLR(optimizer, step_size= (num_epochs//2) , gamma=0.1)
