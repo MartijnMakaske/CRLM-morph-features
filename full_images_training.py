@@ -210,9 +210,9 @@ all_labels = torch.tensor(pd_labels.values.tolist())
 # HYPERPARAMETERS
 # ---------------------------------------
 batch_size = 8
-num_epochs = 100
-learning_rate = 1e-3
-model_name = "model_full_images_lr3_100epochs_AdamW_batch8"
+num_epochs = 150
+learning_rate = 1e-2
+model_name = "model_full_images_lr2_200epochs_batch8_lrstep3"
 
 class_weights = torch.tensor([1.6363636363636365, 0.496551724137931, 0.96, 3.0], dtype=torch.float32).to(device)
 
@@ -291,10 +291,10 @@ model = model.to(device)
 criterion = nn.CrossEntropyLoss(weight=class_weights)
 
 # Optimizer (when overfitting, use weight decay or AdamW)
-optimizer = optim.AdamW(model.classifier.parameters(), lr=learning_rate, weight_decay=1e-3)
+optimizer = optim.Adam(model.classifier.parameters(), lr=learning_rate)
 
 # Learning rate scheduler
-scheduler = StepLR(optimizer, step_size= (num_epochs//2) , gamma=0.1)
+scheduler = StepLR(optimizer, step_size= (num_epochs//3) , gamma=0.1)
 
 # Train the model for this fold
 train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=num_epochs, device=device)
