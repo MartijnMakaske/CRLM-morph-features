@@ -162,7 +162,7 @@ class SiameseNetwork_Images_OS(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(512,256),
             nn.LeakyReLU(),
-            nn.Linear(256,4)   
+            nn.Linear(256,1)   
         )
 
     
