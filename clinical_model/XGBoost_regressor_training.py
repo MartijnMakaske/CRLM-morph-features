@@ -1,23 +1,38 @@
 # Imports
 
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split, KFold
+from sklearn.model_selection import  KFold
 import pandas as pd
-import numpy as np
+
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error, r2_score, classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 import xgboost as xgb
-import torch
-import os
+import numpy as np
+
+
 
 device = "cpu"
 
 # Load the training data
-data = pd.read_csv('./clinical_model/training_data/training_data.csv')
-labels = pd.read_csv("./clinical_model/training_data/training_targets_OS.csv")
-print(data.shape, labels.shape)
+data = pd.read_csv('./clinical_model/training_data/training_data.csv')              # Features
+labels = pd.read_csv("./clinical_model/training_data/training_targets_OS.csv")      # OS labels
+occurence = pd.read_csv("./clinical_model/training_data/training_targets_OS_occurence.csv") # Event occurence
 
 labels = labels.squeeze()
+occurence = occurence.squeeze()
+
+# Define hyperparameter search space
+base_params = {'verbosity': 0,
+              'objective': 'survival:aft',
+              'eval_metric': 'aft-nloglik',
+              'tree_method': 'hist'}  # Hyperparameters common to all trials
+
+
+
+
+
+
+
+
 
 #X_train, X_val, y_train, y_val = train_test_split(data, labels, test_size=.2)
 all_eval_results = []
@@ -57,6 +72,9 @@ for train_index, test_index in kf.split(data):
     print("R²:", r2_score(labels[test_index], y_pred))
 
     fold += 1
+
+    for i in range(0, len(y_pred)):
+        print(f"y_true: {labels[i]}, y_pred: {y_pred[i]}")
 
 
 

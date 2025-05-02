@@ -184,7 +184,7 @@ def validate_model(model, val_loader, criterion, device="cuda"):
     # Save best model based on validation accuracy
     if val_acc > best_val_acc:
         best_val_acc = val_acc
-        torch.save(model._orig_mod.state_dict(), f'./models/{model_name}.pth')
+        torch.save(model.state_dict(), f'./models/{model_name}.pth')
         print("Best model saved!")
 
 
@@ -252,7 +252,7 @@ train_image_pairs, val_image_pairs, train_labels, val_labels = train_test_split(
 train_dataset = PairedMedicalDataset_Images(
     train_image_pairs, train_labels, transform=[ScaleIntensityRange(a_min=-100,
                                                                      a_max=200, b_min=0.0, b_max=1.0, clip=True), 
-                                                Resize((128, 128, 64), 
+                                                Resize((256, 256, 64), 
                                                 mode="trilinear"),
                                                 Transpose((0, 3, 2, 1)),
                                                 EnsureType(data_type="tensor")]
@@ -260,7 +260,7 @@ train_dataset = PairedMedicalDataset_Images(
 val_dataset = PairedMedicalDataset_Images(
     val_image_pairs, val_labels, transform=[ScaleIntensityRange(a_min=-100,
                                                                  a_max=200, b_min=0.0, b_max=1.0, clip=True), 
-                                            Resize((128, 128, 64), 
+                                            Resize((256, 256, 64), 
                                             mode="trilinear"),
                                             Transpose((0, 3, 2, 1)),
                                             EnsureType(data_type="tensor")]
@@ -276,7 +276,7 @@ encoder = resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False
 # Freeze the weights for the first 3 layers of the encoder
 
 for name, layer in encoder.named_children():
-    if "layer4" not in name:  # Freeze the first 3 layers
+    if "layer4" not in name and "avgpool" not in name:  # Freeze the first 3 layers
         for param in layer.parameters():
             param.requires_grad = False
         print(f"Froze layer: {name}")

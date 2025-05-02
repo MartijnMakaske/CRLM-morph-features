@@ -44,7 +44,7 @@ class WrappedSiameseModel(nn.Module):
 encoder = resnet.resnet18(spatial_dims=3, n_input_channels=1, feed_forward=False, pretrained=True, shortcut_type="A", bias_downsample=True)
 
 model = SiameseNetwork_Images_OS(encoder)
-model.load_state_dict(torch.load("./models/model_tumor_images_lr3_100epochs.pth"))
+model.load_state_dict(torch.load("./models/path_model_full_images_lr3_100epochs_batch4_lrstep2_frozen_encoder3.pth"))
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -87,13 +87,13 @@ wrapped_model = WrappedSiameseModel(model).to(device).eval()
 input_combined = input_combined.to(device)
 
 # Choose target class (e.g., class index 3)
-target_class = 2
+target_class = 0
 
 # Run IG
 ig = IntegratedGradients(wrapped_model)
 
 baseline = torch.zeros_like(input_combined).to(device)
-attributions = ig.attribute(input_combined, baselines=baseline, target=target_class, n_steps=20, internal_batch_size=2)
+attributions = ig.attribute(input_combined, baselines=baseline, target=target_class, n_steps=10, internal_batch_size=2)
 
 
 # For the first input image
